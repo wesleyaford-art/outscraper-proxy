@@ -13,8 +13,12 @@ app.get("/health", (req, res) => {
 });
 
 app.post("/api/businesses", async (req, res) => {
+  console.log("BUSINESSES: route hit");
+
   try {
     const apiKey = process.env.OUTSCRAPER_API_KEY;
+    console.log("BUSINESSES: has key =", !!apiKey);
+
     if (!apiKey) {
       return res.status(500).json({
         success: false,
@@ -23,6 +27,7 @@ app.post("/api/businesses", async (req, res) => {
     }
 
     const { city, state, niche, limit = 25 } = req.body || {};
+    console.log("BUSINESSES: body =", { city, state, niche, limit });
 
     if (!city || !state || !niche) {
       return res.status(400).json({
@@ -31,17 +36,25 @@ app.post("/api/businesses", async (req, res) => {
       });
     }
 
+    console.log("BUSINESSES: creating client");
     const client = new Outscraper(apiKey);
-    const query = `${niche} ${city} ${state} USA`;
 
-    const response = await client.googleMapsSearch(
-      [query],
-      Number(limit),
-      "en",
-      "US"
-    );
+    const query = `${niche} ${city} ${state} USA`;
+    console.log("BUSINESSES: query =", query);
+
+    const timeoutMs = 15000;
+
+    const response = await Promise.race([
+      client.googleMapsSearch([query], Number(limit), "en", "US"),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`Outscraper timeout after ${timeoutMs}ms`)), timeoutMs)
+      )
+    ]);
+
+    console.log("BUSINESSES: raw response received");
 
     const places = Array.isArray(response?.[0]) ? response[0] : [];
+    console.log("BUSINESSES: places count =", places.length);
 
     const businesses = places
       .filter((p) => !p.site || String(p.site).trim() === "")
@@ -66,8 +79,12 @@ app.post("/api/businesses", async (req, res) => {
 });
 
 app.post("/api/reviews", async (req, res) => {
+  console.log("REVIEWS: route hit");
+
   try {
     const apiKey = process.env.OUTSCRAPER_API_KEY;
+    console.log("REVIEWS: has key =", !!apiKey);
+
     if (!apiKey) {
       return res.status(500).json({
         success: false,
@@ -76,6 +93,7 @@ app.post("/api/reviews", async (req, res) => {
     }
 
     const { placeId } = req.body || {};
+    console.log("REVIEWS: placeId =", placeId);
 
     if (!placeId) {
       return res.status(400).json({
@@ -86,13 +104,16 @@ app.post("/api/reviews", async (req, res) => {
 
     const client = new Outscraper(apiKey);
 
-    const response = await client.googleMapsReviews(
-      [placeId],
-      3,
-      1,
-      "en",
-      "newest"
-    );
+    const timeoutMs = 15000;
+
+    const response = await Promise.race([
+      client.googleMapsReviews([placeId], 3, 1, "en", "newest"),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`Outscraper timeout after ${timeoutMs}ms`)), timeoutMs)
+      )
+    ]);
+
+    console.log("REVIEWS: raw response received");
 
     const place = Array.isArray(response?.[0])
       ? response[0][0]
