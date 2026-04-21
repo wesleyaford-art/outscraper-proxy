@@ -1,20 +1,18 @@
-import express from "express";
+const http = require("http");
 
-console.log("BOOT: file loaded");
+console.log("BOOT: loaded");
 
-const app = express();
+const server = http.createServer((req, res) => {
+  if (req.url === "/" || req.url === "/health") {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end("ok");
+    return;
+  }
 
-app.get("/", (req, res) => {
-  res.status(200).send("ok");
+  res.writeHead(404, { "Content-Type": "text/plain" });
+  res.end("not found");
 });
 
-app.get("/health", (req, res) => {
-  res.status(200).send("ok");
-});
-
-const PORT = 3000;
-console.log("BOOT: about to listen on", PORT);
-
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Listening on ${PORT}`);
+server.listen(3000, "0.0.0.0", () => {
+  console.log("BOOT: listening on 3000");
 });
