@@ -68,7 +68,6 @@ app.post("/api/businesses", async (req, res) => {
 
     const client = new Outscraper(apiKey);
 
-    // Try several simple query styles closer to Outscraper examples.
     const queries = [
       `${niche} ${city} usa`,
       `${niche} ${city} ${state} usa`,
@@ -108,13 +107,6 @@ app.post("/api/businesses", async (req, res) => {
       queriesTried: queries,
       totalFound: deduped.length,
       withoutWebsite: businesses.length,
-      rawSample: deduped.slice(0, 10).map((p) => ({
-        name: p.name || "",
-        website: p.site || "",
-        placeId: p.place_id || "",
-        googleId: p.google_id || "",
-        address: p.full_address || ""
-      })),
       businesses
     });
   } catch (err) {
@@ -145,8 +137,6 @@ app.post("/api/reviews", async (req, res) => {
     }
 
     const client = new Outscraper(apiKey);
-
-    // Outscraper examples for specific place/review lookups use an id with an "r" prefix.
     const lookupId = toReviewLookupId(placeId);
 
     const response = await client.googleMapsReviews(
