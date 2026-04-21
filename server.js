@@ -39,7 +39,7 @@ app.post("/api/businesses", async (req, res) => {
     console.log("BUSINESSES: creating client");
     const client = new Outscraper(apiKey);
 
-    const query = `${niche} ${city} ${state} USA`;
+   const query = `${niche} in ${city}, ${state}`;
     console.log("BUSINESSES: query =", query);
 
     const timeoutMs = 15000;
