@@ -1,5 +1,7 @@
 import express from "express";
 
+console.log("BOOT: file loaded");
+
 const app = express();
 
 app.get("/", (req, res) => {
@@ -11,6 +13,7 @@ app.get("/health", (req, res) => {
 });
 
 const PORT = 3000;
+console.log("BOOT: about to listen on", PORT);
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Listening on ${PORT}`);
