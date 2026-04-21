@@ -53,7 +53,7 @@ app.post("/api/businesses", async (req, res) => {
 
     console.log("BUSINESSES: raw response received");
 
-    const places = Array.isArray(response?.[0]) ? response[0] : [];
+   const places = Array.isArray(response?.[0]) ? response[0] : [];
 
 const businesses = places
   .filter((p) => !p.site || String(p.site).trim() === "")
@@ -64,10 +64,20 @@ const businesses = places
     rating: p.rating ?? null,
     reviews: p.reviews ?? 0,
     placeId: p.place_id || "",
-    googleId: p.google_id || ""
+    googleId: p.google_id || "",
+    website: p.site || ""
   }));
 
-return res.json({ success: true, businesses });
+return res.json({
+  success: true,
+  totalFound: places.length,
+  withoutWebsite: businesses.length,
+  sample: places.slice(0, 5).map((p) => ({
+    name: p.name || "",
+    website: p.site || ""
+  })),
+  businesses
+});
   } catch (err) {
     console.error("BUSINESSES ERROR:", err);
     return res.status(500).json({
