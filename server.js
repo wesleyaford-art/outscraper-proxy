@@ -6,16 +6,29 @@ import Outscraper from "outscraper";
 dotenv.config();
 
 const app = express();
-
 app.use(cors());
 app.use(express.json());
 
+app.get("/", (req, res) => {
+  res.status(200).json({ ok: true, message: "API is running" });
+});
+
+app.get("/health", (req, res) => {
+  res.status(200).send("ok");
+});
+
 const client = new Outscraper(process.env.OUTSCRAPER_API_KEY);
 
-// Get businesses with no website
 app.post("/api/businesses", async (req, res) => {
   try {
-    const { city, state, niche, limit = 25 } = req.body;
+    const { city, state, niche, limit = 25 } = req.body || {};
+
+    if (!city || !state || !niche) {
+      return res.status(400).json({
+        success: false,
+        error: "city, state, and niche are required"
+      });
+    }
 
     const query = `${niche} ${city} ${state} USA`;
 
@@ -26,31 +39,40 @@ app.post("/api/businesses", async (req, res) => {
       "US"
     );
 
-    const places = response?.[0] || [];
+    const places = Array.isArray(response?.[0]) ? response[0] : [];
 
     const businesses = places
-      .filter(p => !p.site || p.site.trim() === "")
-      .map(p => ({
-        name: p.name,
-        phone: p.phone,
-        address: p.full_address,
-        rating: p.rating,
-        reviews: p.reviews,
-        placeId: p.place_id,
-        googleId: p.google_id
+      .filter((p) => !p.site || String(p.site).trim() === "")
+      .map((p) => ({
+        name: p.name || "",
+        phone: p.phone || "",
+        address: p.full_address || "",
+        rating: p.rating ?? null,
+        reviews: p.reviews ?? 0,
+        placeId: p.place_id || "",
+        googleId: p.google_id || ""
       }));
 
-    res.json({ success: true, businesses });
-
+    return res.json({ success: true, businesses });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    console.error("BUSINESSES ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      error: err?.message || "Unknown error"
+    });
   }
 });
 
-// Get 3 newest reviews
 app.post("/api/reviews", async (req, res) => {
   try {
-    const { placeId } = req.body;
+    const { placeId } = req.body || {};
+
+    if (!placeId) {
+      return res.status(400).json({
+        success: false,
+        error: "placeId is required"
+      });
+    }
 
     const response = await client.googleMapsReviews(
       [placeId],
@@ -60,21 +82,29 @@ app.post("/api/reviews", async (req, res) => {
       "newest"
     );
 
-    const place = response?.[0]?.[0] || response?.[0];
+    const place = Array.isArray(response?.[0])
+      ? response[0][0]
+      : Array.isArray(response)
+      ? response[0]
+      : null;
 
-    const reviews = (place?.reviews_data || []).slice(0, 3).map(r => ({
-      author: r.author_title,
-      rating: r.review_rating,
-      text: r.review_text
+    const reviews = (place?.reviews_data || []).slice(0, 3).map((r) => ({
+      author: r.author_title || "",
+      rating: r.review_rating ?? null,
+      text: r.review_text || ""
     }));
 
-    res.json({ success: true, reviews });
-
+    return res.json({ success: true, reviews });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    console.error("REVIEWS ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      error: err?.message || "Unknown error"
+    });
   }
 });
 
-app.listen(process.env.PORT || 3000, () => {
-  console.log("Server running");
+const PORT = Number(process.env.PORT) || 3000;
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server running on port ${PORT}`);
 });
