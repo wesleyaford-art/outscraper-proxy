@@ -12,6 +12,23 @@ app.get("/health", (req, res) => {
   res.status(200).send("ok");
 });
 
+function hasRealWebsite(url) {
+  if (!url || !String(url).trim()) return false;
+
+  const normalized = String(url).toLowerCase();
+
+  const badDomains = [
+    "facebook.com",
+    "instagram.com",
+    "yelp.com",
+    "m.yelp.com",
+    "linkedin.com",
+    "nextdoor.com"
+  ];
+
+  return !badDomains.some((d) => normalized.includes(d));
+}
+
 app.post("/api/businesses", async (req, res) => {
   console.log("BUSINESSES: route hit");
 
@@ -36,48 +53,47 @@ app.post("/api/businesses", async (req, res) => {
       });
     }
 
-    console.log("BUSINESSES: creating client");
     const client = new Outscraper(apiKey);
 
-   const query = `${niche} in ${city}, ${state}`;
+    const query = `${niche} in ${city}, ${state}`;
     console.log("BUSINESSES: query =", query);
 
-    const timeoutMs = 15000;
-
-    const response = await Promise.race([
-      client.googleMapsSearch([query], Number(limit), "en", "US"),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`Outscraper timeout after ${timeoutMs}ms`)), timeoutMs)
-      )
-    ]);
+    const response = await client.googleMapsSearch(
+      [query],
+      Number(limit),
+      "en",
+      "US"
+    );
 
     console.log("BUSINESSES: raw response received");
 
-   const places = Array.isArray(response?.[0]) ? response[0] : [];
+    const places = Array.isArray(response?.[0]) ? response[0] : [];
+    console.log("BUSINESSES: places count =", places.length);
 
-const businesses = places
-  .filter((p) => !p.site || String(p.site).trim() === "")
-  .map((p) => ({
-    name: p.name || "",
-    phone: p.phone || "",
-    address: p.full_address || "",
-    rating: p.rating ?? null,
-    reviews: p.reviews ?? 0,
-    placeId: p.place_id || "",
-    googleId: p.google_id || "",
-    website: p.site || ""
-  }));
+    const businesses = places
+      .filter((p) => !hasRealWebsite(p.site))
+      .map((p) => ({
+        name: p.name || "",
+        phone: p.phone || "",
+        address: p.full_address || "",
+        rating: p.rating ?? null,
+        reviews: p.reviews ?? 0,
+        placeId: p.place_id || "",
+        googleId: p.google_id || "",
+        website: p.site || ""
+      }));
 
-return res.json({
-  success: true,
-  totalFound: places.length,
-  withoutWebsite: businesses.length,
-  sample: places.slice(0, 5).map((p) => ({
-    name: p.name || "",
-    website: p.site || ""
-  })),
-  businesses
-});
+    return res.json({
+      success: true,
+      query,
+      totalFound: places.length,
+      withoutWebsite: businesses.length,
+      sample: places.slice(0, 5).map((p) => ({
+        name: p.name || "",
+        website: p.site || ""
+      })),
+      businesses
+    });
   } catch (err) {
     console.error("BUSINESSES ERROR:", err);
     return res.status(500).json({
@@ -113,14 +129,13 @@ app.post("/api/reviews", async (req, res) => {
 
     const client = new Outscraper(apiKey);
 
-    const timeoutMs = 15000;
-
-    const response = await Promise.race([
-      client.googleMapsReviews([placeId], 3, 1, "en", "newest"),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`Outscraper timeout after ${timeoutMs}ms`)), timeoutMs)
-      )
-    ]);
+    const response = await client.googleMapsReviews(
+      [placeId],
+      3,
+      1,
+      "en",
+      "newest"
+    );
 
     console.log("REVIEWS: raw response received");
 
@@ -136,7 +151,13 @@ app.post("/api/reviews", async (req, res) => {
       text: r.review_text || ""
     }));
 
-    return res.json({ success: true, reviews });
+    return res.json({
+      success: true,
+      requestedPlaceId: placeId,
+      matchedBusiness: place?.name || null,
+      reviewCount: Array.isArray(place?.reviews_data) ? place.reviews_data.length : 0,
+      reviews
+    });
   } catch (err) {
     console.error("REVIEWS ERROR:", err);
     return res.status(500).json({
