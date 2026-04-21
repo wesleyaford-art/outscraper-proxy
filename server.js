@@ -54,21 +54,20 @@ app.post("/api/businesses", async (req, res) => {
     console.log("BUSINESSES: raw response received");
 
     const places = Array.isArray(response?.[0]) ? response[0] : [];
-    console.log("BUSINESSES: places count =", places.length);
 
-    const businesses = places
-      .filter((p) => !p.site || String(p.site).trim() === "")
-      .map((p) => ({
-        name: p.name || "",
-        phone: p.phone || "",
-        address: p.full_address || "",
-        rating: p.rating ?? null,
-        reviews: p.reviews ?? 0,
-        placeId: p.place_id || "",
-        googleId: p.google_id || ""
-      }));
+const businesses = places
+  .filter((p) => !p.site || String(p.site).trim() === "")
+  .map((p) => ({
+    name: p.name || "",
+    phone: p.phone || "",
+    address: p.full_address || "",
+    rating: p.rating ?? null,
+    reviews: p.reviews ?? 0,
+    placeId: p.place_id || "",
+    googleId: p.google_id || ""
+  }));
 
-    return res.json({ success: true, businesses });
+return res.json({ success: true, businesses });
   } catch (err) {
     console.error("BUSINESSES ERROR:", err);
     return res.status(500).json({
