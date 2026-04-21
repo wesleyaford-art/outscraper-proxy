@@ -16,7 +16,6 @@ function hasRealWebsite(url) {
   if (!url || !String(url).trim()) return false;
 
   const normalized = String(url).toLowerCase();
-
   const badDomains = [
     "facebook.com",
     "instagram.com",
@@ -29,12 +28,14 @@ function hasRealWebsite(url) {
   return !badDomains.some((d) => normalized.includes(d));
 }
 
-app.post("/api/businesses", async (req, res) => {
-  console.log("BUSINESSES: route hit");
+function toReviewLookupId(placeId) {
+  if (!placeId) return placeId;
+  return String(placeId).startsWith("r") ? String(placeId) : `r${placeId}`;
+}
 
+app.post("/api/businesses", async (req, res) => {
   try {
     const apiKey = process.env.OUTSCRAPER_API_KEY;
-    console.log("BUSINESSES: has key =", !!apiKey);
 
     if (!apiKey) {
       return res.status(500).json({
@@ -44,7 +45,6 @@ app.post("/api/businesses", async (req, res) => {
     }
 
     const { city, state, niche, limit = 25 } = req.body || {};
-    console.log("BUSINESSES: body =", { city, state, niche, limit });
 
     if (!city || !state || !niche) {
       return res.status(400).json({
@@ -55,23 +55,39 @@ app.post("/api/businesses", async (req, res) => {
 
     const client = new Outscraper(apiKey);
 
-    const query = `${niche} in ${city}, ${state}`;
-    console.log("BUSINESSES: query =", query);
+    // Use multiple search phrases closer to Outscraper's example format.
+    const queries = [
+      `${niche} ${city} ${state} usa`,
+      `${niche} ${city} usa`,
+      `${niche} near ${city} ${state}`
+    ];
 
     const response = await client.googleMapsSearch(
-      [query],
+      queries,
       Number(limit),
       "en",
-      "US"
+      "us"
     );
 
-    console.log("BUSINESSES: raw response received");
+    // Flatten results from multiple queries and dedupe by place_id.
+    const allPlaces = Array.isArray(response)
+      ? response.flatMap((group) => (Array.isArray(group) ? group : []))
+      : [];
 
-    const places = Array.isArray(response?.[0]) ? response[0] : [];
-    console.log("BUSINESSES: places count =", places.length);
+    const deduped = [];
+    const seen = new Set();
 
-    const businesses = places
+    for (const p of allPlaces) {
+      const key = p.place_id || p.google_id || `${p.name}|${p.full_address}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        deduped.push(p);
+      }
+    }
+
+    const businesses = deduped
       .filter((p) => !hasRealWebsite(p.site))
+      .slice(0, Number(limit))
       .map((p) => ({
         name: p.name || "",
         phone: p.phone || "",
@@ -85,12 +101,13 @@ app.post("/api/businesses", async (req, res) => {
 
     return res.json({
       success: true,
-      query,
-      totalFound: places.length,
+      queries,
+      totalFound: deduped.length,
       withoutWebsite: businesses.length,
-      sample: places.slice(0, 5).map((p) => ({
+      sample: deduped.slice(0, 5).map((p) => ({
         name: p.name || "",
-        website: p.site || ""
+        website: p.site || "",
+        placeId: p.place_id || ""
       })),
       businesses
     });
@@ -104,11 +121,8 @@ app.post("/api/businesses", async (req, res) => {
 });
 
 app.post("/api/reviews", async (req, res) => {
-  console.log("REVIEWS: route hit");
-
   try {
     const apiKey = process.env.OUTSCRAPER_API_KEY;
-    console.log("REVIEWS: has key =", !!apiKey);
 
     if (!apiKey) {
       return res.status(500).json({
@@ -118,7 +132,6 @@ app.post("/api/reviews", async (req, res) => {
     }
 
     const { placeId } = req.body || {};
-    console.log("REVIEWS: placeId =", placeId);
 
     if (!placeId) {
       return res.status(400).json({
@@ -128,16 +141,15 @@ app.post("/api/reviews", async (req, res) => {
     }
 
     const client = new Outscraper(apiKey);
+    const lookupId = toReviewLookupId(placeId);
 
     const response = await client.googleMapsReviews(
-      [placeId],
+      [lookupId],
       3,
       1,
       "en",
       "newest"
     );
-
-    console.log("REVIEWS: raw response received");
 
     const place = Array.isArray(response?.[0])
       ? response[0][0]
@@ -154,6 +166,7 @@ app.post("/api/reviews", async (req, res) => {
     return res.json({
       success: true,
       requestedPlaceId: placeId,
+      lookupId,
       matchedBusiness: place?.name || null,
       reviewCount: Array.isArray(place?.reviews_data) ? place.reviews_data.length : 0,
       reviews
