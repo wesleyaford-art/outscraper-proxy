@@ -28,6 +28,21 @@ function hasRealWebsite(url) {
   return !badDomains.some((d) => normalized.includes(d));
 }
 
+function dedupePlaces(places) {
+  const seen = new Set();
+  const out = [];
+
+  for (const p of places) {
+    const key = p.place_id || p.google_id || `${p.name}|${p.full_address}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(p);
+    }
+  }
+
+  return out;
+}
+
 function toReviewLookupId(placeId) {
   if (!placeId) return placeId;
   return String(placeId).startsWith("r") ? String(placeId) : `r${placeId}`;
@@ -36,7 +51,6 @@ function toReviewLookupId(placeId) {
 app.post("/api/businesses", async (req, res) => {
   try {
     const apiKey = process.env.OUTSCRAPER_API_KEY;
-
     if (!apiKey) {
       return res.status(500).json({
         success: false,
@@ -45,7 +59,6 @@ app.post("/api/businesses", async (req, res) => {
     }
 
     const { city, state, niche, limit = 25 } = req.body || {};
-
     if (!city || !state || !niche) {
       return res.status(400).json({
         success: false,
@@ -55,35 +68,26 @@ app.post("/api/businesses", async (req, res) => {
 
     const client = new Outscraper(apiKey);
 
-    // Use multiple search phrases closer to Outscraper's example format.
+    // Try several simple query styles closer to Outscraper examples.
     const queries = [
-      `${niche} ${city} ${state} usa`,
       `${niche} ${city} usa`,
-      `${niche} near ${city} ${state}`
+      `${niche} ${city} ${state} usa`,
+      `${niche} ${city}`,
+      `${niche} ${state} usa`
     ];
 
     const response = await client.googleMapsSearch(
       queries,
       Number(limit),
       "en",
-      "us"
+      "US"
     );
 
-    // Flatten results from multiple queries and dedupe by place_id.
     const allPlaces = Array.isArray(response)
       ? response.flatMap((group) => (Array.isArray(group) ? group : []))
       : [];
 
-    const deduped = [];
-    const seen = new Set();
-
-    for (const p of allPlaces) {
-      const key = p.place_id || p.google_id || `${p.name}|${p.full_address}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        deduped.push(p);
-      }
-    }
+    const deduped = dedupePlaces(allPlaces);
 
     const businesses = deduped
       .filter((p) => !hasRealWebsite(p.site))
@@ -101,13 +105,15 @@ app.post("/api/businesses", async (req, res) => {
 
     return res.json({
       success: true,
-      queries,
+      queriesTried: queries,
       totalFound: deduped.length,
       withoutWebsite: businesses.length,
-      sample: deduped.slice(0, 5).map((p) => ({
+      rawSample: deduped.slice(0, 10).map((p) => ({
         name: p.name || "",
         website: p.site || "",
-        placeId: p.place_id || ""
+        placeId: p.place_id || "",
+        googleId: p.google_id || "",
+        address: p.full_address || ""
       })),
       businesses
     });
@@ -123,7 +129,6 @@ app.post("/api/businesses", async (req, res) => {
 app.post("/api/reviews", async (req, res) => {
   try {
     const apiKey = process.env.OUTSCRAPER_API_KEY;
-
     if (!apiKey) {
       return res.status(500).json({
         success: false,
@@ -132,7 +137,6 @@ app.post("/api/reviews", async (req, res) => {
     }
 
     const { placeId } = req.body || {};
-
     if (!placeId) {
       return res.status(400).json({
         success: false,
@@ -141,6 +145,8 @@ app.post("/api/reviews", async (req, res) => {
     }
 
     const client = new Outscraper(apiKey);
+
+    // Outscraper examples for specific place/review lookups use an id with an "r" prefix.
     const lookupId = toReviewLookupId(placeId);
 
     const response = await client.googleMapsReviews(
