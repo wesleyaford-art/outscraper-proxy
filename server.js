@@ -73,9 +73,19 @@ app.post("/api/businesses", async (req, res) => {
 
     const data = await response.json();
 
-    const places = Array.isArray(data?.data)
-      ? data.data.flatMap((group) => (Array.isArray(group) ? group : []))
-      : [];
+    const businesses = places
+  .filter((p) => hasNoRealWebsite(p.website || p.site))   // ✅ no website filter
+  .filter((p) => (p.reviews || 0) >= 3)                   // ✅ quality filter (PUT IT HERE)
+  .map((p) => ({
+    name: p.name || "",
+    phone: p.phone || "",
+    address: p.address || p.full_address || "",
+    website: p.website || p.site || "",
+    googleId: p.google_id || "",
+    placeId: p.place_id || "",
+    reviewCount: p.reviews || 0,
+    rating: p.rating ?? null
+  }));
 
     const deduped = [];
     const seen = new Set();
