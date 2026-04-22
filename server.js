@@ -3,12 +3,9 @@ const express = require("express");
 const app = express();
 app.use(express.json());
 
-app.get("/", (req, res) => res.send("ok"));
-app.get("/health", (req, res) => res.send("ok"));
+app.get("/", (req, res) => res.status(200).send("ok"));
+app.get("/health", (req, res) => res.status(200).send("ok"));
 
-/**
- * Detect if business has NO real website
- */
 function hasNoRealWebsite(site) {
   const s = (site || "").toLowerCase().trim();
 
@@ -29,9 +26,6 @@ function hasNoRealWebsite(site) {
   return badDomains.some((d) => s.includes(d));
 }
 
-/**
- * BUSINESS SEARCH (ZIP-based, matches Outscraper UI)
- */
 app.post("/api/businesses", async (req, res) => {
   try {
     const apiKey = process.env.OUTSCRAPER_API_KEY;
@@ -53,22 +47,27 @@ app.post("/api/businesses", async (req, res) => {
 
     const queries = zips.map((zip) => `${category}, ${zip}, US`);
 
-    const response = await fetch(
-      "https://api.outscraper.cloud/google-maps-search",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-API-KEY": apiKey
-        },
-        body: JSON.stringify({
-          query: queries,
-          limit,
-          async: false,
-          language: "en"
-        })
-      }
-    );
+    const response = await fetch("https://api.app.outscraper.com/maps/search-v3", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-KEY": apiKey
+      },
+      body: JSON.stringify({
+        query: queries,
+        limit: Number(limit),
+        async: false,
+        language: "en"
+      })
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      return res.status(500).json({
+        success: false,
+        error: `Outscraper search failed: ${response.status} ${text}`
+      });
+    }
 
     const data = await response.json();
 
@@ -76,14 +75,24 @@ app.post("/api/businesses", async (req, res) => {
       ? data.data.flatMap((group) => (Array.isArray(group) ? group : []))
       : [];
 
-    const businesses = places
-      .filter((p) => hasNoRealWebsite(p.site))      // 🔥 KEY FILTER
-      .filter((p) => (p.reviews || 0) >= 3)         // 🔥 QUALITY FILTER
+    const deduped = [];
+    const seen = new Set();
+
+    for (const p of places) {
+      const key = p.place_id || p.google_id || `${p.name}|${p.address || p.full_address}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        deduped.push(p);
+      }
+    }
+
+    const businesses = deduped
+      .filter((p) => hasNoRealWebsite(p.website || p.site))
       .map((p) => ({
         name: p.name || "",
         phone: p.phone || "",
-        address: p.full_address || "",
-        website: p.site || "",
+        address: p.address || p.full_address || "",
+        website: p.website || p.site || "",
         googleId: p.google_id || "",
         placeId: p.place_id || "",
         reviewCount: p.reviews || 0,
@@ -92,7 +101,9 @@ app.post("/api/businesses", async (req, res) => {
 
     return res.json({
       success: true,
-      total: businesses.length,
+      queriesTried: queries,
+      totalFound: deduped.length,
+      withoutWebsite: businesses.length,
       businesses
     });
   } catch (err) {
@@ -104,13 +115,10 @@ app.post("/api/businesses", async (req, res) => {
   }
 });
 
-/**
- * REVIEWS (uses googleId — most reliable)
- */
 app.post("/api/reviews", async (req, res) => {
   try {
     const apiKey = process.env.OUTSCRAPER_API_KEY;
-    const { googleId } = req.body || {};
+    const { googleId, placeId } = req.body || {};
 
     if (!apiKey) {
       return res.status(500).json({
@@ -119,31 +127,38 @@ app.post("/api/reviews", async (req, res) => {
       });
     }
 
-    if (!googleId) {
+    const lookup = googleId || placeId;
+
+    if (!lookup) {
       return res.status(400).json({
         success: false,
-        error: "googleId required"
+        error: "googleId or placeId required"
       });
     }
 
-    const response = await fetch(
-      "https://api.app.outscraper.com/maps/reviews-v3",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-API-KEY": apiKey
-        },
-        body: JSON.stringify({
-          query: googleId,
-          limit: 3,
-          reviewsLimit: 3,
-          sort: "newest",
-          language: "en",
-          async: false
-        })
-      }
-    );
+    const response = await fetch("https://api.app.outscraper.com/maps/reviews-v3", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-KEY": apiKey
+      },
+      body: JSON.stringify({
+        query: lookup,
+        limit: 3,
+        reviewsLimit: 3,
+        sort: "newest",
+        language: "en",
+        async: false
+      })
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      return res.status(500).json({
+        success: false,
+        error: `Outscraper reviews failed: ${response.status} ${text}`
+      });
+    }
 
     const data = await response.json();
 
@@ -163,7 +178,7 @@ app.post("/api/reviews", async (req, res) => {
     return res.json({
       success: true,
       matchedBusiness: place?.name || null,
-      reviewCount: place?.reviews_data?.length || 0,
+      reviewCount: Array.isArray(place?.reviews_data) ? place.reviews_data.length : 0,
       reviews
     });
   } catch (err) {
