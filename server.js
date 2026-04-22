@@ -73,19 +73,28 @@ app.post("/api/businesses", async (req, res) => {
 
     const data = await response.json();
 
-    const businesses = places
-  .filter((p) => hasNoRealWebsite(p.website || p.site))   // ✅ no website filter
-  .filter((p) => (p.reviews || 0) >= 3)                   // ✅ quality filter (PUT IT HERE)
-  .map((p) => ({
-    name: p.name || "",
-    phone: p.phone || "",
-    address: p.address || p.full_address || "",
-    website: p.website || p.site || "",
-    googleId: p.google_id || "",
-    placeId: p.place_id || "",
-    reviewCount: p.reviews || 0,
-    rating: p.rating ?? null
-  }));
+  const businesses = places
+  .filter((p) => hasNoRealWebsite(p.website || p.site))
+  .map((p) => {
+    const reviews = p.reviews || 0;
+    const rating = p.rating || 0;
+
+    return {
+      name: p.name || "",
+      phone: p.phone || "",
+      address: p.address || p.full_address || "",
+      website: p.website || p.site || "",
+      googleId: p.google_id || "",
+      placeId: p.place_id || "",
+      reviewCount: reviews,
+      rating: rating,
+
+      // 🔥 scoring system
+      score: (reviews * 2) + (rating * 5)
+    };
+  })
+  .sort((a, b) => b.score - a.score)   // 🔥 BEST leads first
+  .slice(0, 20);                       // 🔥 only keep top 20
 
     const deduped = [];
     const seen = new Set();
