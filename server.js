@@ -45,7 +45,9 @@ app.post("/api/businesses", async (req, res) => {
       });
     }
 
-    const queries = zips.map((zip) => `${category}, ${zip}, US`);
+    const queries = zips.map(
+  (zip) => `${category}, ${zip}, NC, US`
+);
 
     const response = await fetch("https://api.app.outscraper.com/maps/search-v3", {
       method: "POST",
