@@ -12,7 +12,9 @@ app.use(express.json());
 // Health checks
 app.get("/", (req, res) => res.send("OK"));
 app.get("/health", (req, res) => res.send("OK"));
-
+app.get("/cors-test", (req, res) => {
+  res.json({ ok: true, cors: true });
+});
 // ===============================
 // BUSINESS SEARCH ENDPOINT
 // ===============================
