@@ -1,13 +1,10 @@
-const fetch = require("node-fetch");
 const express = require("express");
 const cors = require("cors");
+const fetch = require("node-fetch");
 
 const app = express();
 
-// ✅ REQUIRED: enable CORS so browser can talk to Railway
 app.use(cors());
-
-// ✅ REQUIRED: parse JSON body
 app.use(express.json());
 
 // Health checks
